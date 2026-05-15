@@ -14,6 +14,7 @@ data/monitor_results/
 
 # Local AI assistant notes
 CLAUDE.md
+.claude/
 
 backend/data
 
