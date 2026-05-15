@@ -12,6 +12,9 @@ data/monitor_results/
 .cursor/
 .venv/
 
+# Local AI assistant notes
+CLAUDE.md
+
 backend/data
 
 .env
