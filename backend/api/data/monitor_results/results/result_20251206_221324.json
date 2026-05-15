@@ -1,0 +1,16 @@
+{
+  "timestamp": "2025-12-06T22:13:24.663527",
+  "emotion": "sad",
+  "emotion_zh": "悲伤",
+  "confidence": 0.6312455534934998,
+  "probabilities": {
+    "anger": 0.027649836614727974,
+    "disgust": 0.01038269978016615,
+    "fear": 0.1465865820646286,
+    "happy": 0.12881000339984894,
+    "sad": 0.6312455534934998,
+    "surprised": 0.055325333029031754
+  },
+  "image_filename": "capture_20251206_221324.jpg",
+  "image_path": "images/capture_20251206_221324.jpg"
+}

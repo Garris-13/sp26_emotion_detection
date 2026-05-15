@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "allow": [
+      "Bash(/home/wumenglin/Emotion_detection/.venv/bin/kaggle datasets *)",
+      "Bash(unzip -q raf-db-dataset.zip -d RAF-DB)",
+      "Bash(/home/wumenglin/Emotion_detection/.venv/bin/python3 -c \"import zipfile; zipfile.ZipFile\\('/home/wumenglin/Emotion_detection/data/raf-db-dataset.zip'\\).extractall\\('/home/wumenglin/Emotion_detection/data/RAF-DB'\\)\")",
+      "Edit",
+      "Write",
+      "Bash(git *)",
+      "Bash(npm *)",
+      "Bash(python -m pytest *)",
+      "Bash(pytest *)",
+      "Bash(cat)",
+      "Read(//tmp/**)"
+    ]
+  }
+}

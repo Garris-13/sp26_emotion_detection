@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EmoCare · 实时情绪识别</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f13;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+      gap: 24px;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: #a78bfa;
+    }
+
+    /* ── Camera + overlay ── */
+    #camera-container {
+      position: relative;
+      width: 640px;
+      max-width: 100%;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 0 40px rgba(167, 139, 250, 0.2);
+      background: #1a1a24;
+    }
+
+    #video {
+      width: 100%;
+      display: block;
+      transform: scaleX(-1); /* 镜像，符合自拍习惯 */
+    }
+
+    #overlay {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      transform: scaleX(-1); /* 与 video 同向镜像 */
+    }
+
+    /* ── Status bar ── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+
+    #status-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: #64748b;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    #status-dot.active  { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+    #status-dot.error   { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+    #status-dot.loading { background: #f59e0b; animation: pulse 1s infinite; }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    /* ── Controls ── */
+    #controls {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    button {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 10px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button:active { transform: scale(0.97); }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    #btn-start  { background: #7c3aed; color: #fff; }
+    #btn-stop   { background: #374151; color: #e2e8f0; }
+
+    /* ── Emotion panel ── */
+    #emotion-panel {
+      width: 640px;
+      max-width: 100%;
+      background: #1a1a24;
+      border-radius: 16px;
+      padding: 20px 24px;
+      display: none;
+    }
+    #emotion-panel.visible { display: block; }
+
+    #face-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .face-tab {
+      padding: 6px 14px;
+      border-radius: 8px;
+      background: #2d2d3d;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .face-tab.active {
+      background: #4c1d95;
+      color: #c4b5fd;
+      border-color: #7c3aed;
+    }
+
+    #main-emotion {
+      font-size: 2rem;
+      font-weight: 800;
+      color: #a78bfa;
+      margin-bottom: 4px;
+    }
+    #main-confidence {
+      font-size: 0.85rem;
+      color: #64748b;
+      margin-bottom: 20px;
+    }
+
+    .bar-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .bar-label {
+      width: 60px;
+      font-size: 0.78rem;
+      color: #94a3b8;
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .bar-track {
+      flex: 1;
+      height: 8px;
+      background: #2d2d3d;
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 99px;
+      background: #7c3aed;
+      transition: width 0.25s ease;
+    }
+    .bar-pct {
+      width: 40px;
+      font-size: 0.78rem;
+      color: #64748b;
+      text-align: left;
+    }
+
+    #no-face-msg {
+      text-align: center;
+      color: #64748b;
+      font-size: 0.9rem;
+      padding: 20px 0;
+      display: none;
+    }
+
+    /* ── Settings ── */
+    #settings {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+      font-size: 0.82rem;
+      color: #64748b;
+    }
+    #settings label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    #settings select, #settings input[type=range] { accent-color: #7c3aed; }
+  </style>
+</head>
+<body>
+  <h1>EmoCare 实时情绪识别</h1>
+
+  <div id="camera-container">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="overlay"></canvas>
+  </div>
+
+  <div id="status-bar">
+    <div id="status-dot"></div>
+    <span id="status-text">点击「开始」以启动摄像头</span>
+  </div>
+
+  <div id="controls">
+    <button id="btn-start">开始</button>
+    <button id="btn-stop" disabled>停止</button>
+  </div>
+
+  <div id="settings">
+    <label>推理间隔
+      <select id="interval-select">
+        <option value="200">5 fps</option>
+        <option value="333" selected>3 fps</option>
+        <option value="500">2 fps</option>
+        <option value="1000">1 fps</option>
+      </select>
+    </label>
+    <label>置信阈值
+      <input type="range" id="conf-slider" min="20" max="90" value="45" step="5" />
+      <span id="conf-val">0.45</span>
+    </label>
+  </div>
+
+  <div id="emotion-panel">
+    <div id="face-tabs"></div>
+    <div id="main-emotion">—</div>
+    <div id="main-confidence">置信度 —</div>
+    <div id="bars"></div>
+    <div id="no-face-msg">未检测到人脸</div>
+  </div>
+
+  <!-- Hidden canvas for frame capture (native resolution) -->
+  <canvas id="capture-canvas" style="display:none"></canvas>
+
+  <script>
+    const API_BASE = 'http://localhost:7860';
+
+    const video     = document.getElementById('video');
+    const overlay   = document.getElementById('overlay');
+    const ctx       = overlay.getContext('2d');
+    const capCanvas = document.getElementById('capture-canvas');
+    const capCtx    = capCanvas.getContext('2d');
+
+    const btnStart  = document.getElementById('btn-start');
+    const btnStop   = document.getElementById('btn-stop');
+    const statusDot = document.getElementById('status-dot');
+    const statusTxt = document.getElementById('status-text');
+    const panel     = document.getElementById('emotion-panel');
+    const faceTabs  = document.getElementById('face-tabs');
+    const mainEmo   = document.getElementById('main-emotion');
+    const mainConf  = document.getElementById('main-confidence');
+    const barsDiv   = document.getElementById('bars');
+    const noFaceMsg = document.getElementById('no-face-msg');
+    const confSlider= document.getElementById('conf-slider');
+    const confVal   = document.getElementById('conf-val');
+    const intervalSel = document.getElementById('interval-select');
+
+    const EMOTION_ZH = {
+      surprised:'惊讶', fear:'恐惧', disgust:'厌恶',
+      happy:'快乐', sad:'悲伤', anger:'愤怒', neutral:'平静'
+    };
+    const BAR_COLORS = {
+      happy:'#22c55e', neutral:'#94a3b8', surprised:'#f59e0b',
+      sad:'#60a5fa', fear:'#a78bfa', disgust:'#f97316', anger:'#ef4444'
+    };
+
+    let stream = null;
+    let intervalId = null;
+    let currentFaces = [];
+    let activeFaceIdx = 0;
+    let isBusy = false;
+
+    confSlider.addEventListener('input', () => {
+      confVal.textContent = (confSlider.value / 100).toFixed(2);
+    });
+
+    function setStatus(state, text) {
+      statusDot.className = state;
+      statusTxt.textContent = text;
+    }
+
+    // ── Start camera ──
+    btnStart.addEventListener('click', async () => {
+      setStatus('loading', '正在请求摄像头权限…');
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+        video.srcObject = stream;
+        await video.play();
+
+        // Sync overlay size to video
+        video.addEventListener('loadedmetadata', syncOverlay, { once: true });
+        syncOverlay();
+
+        btnStart.disabled = true;
+        btnStop.disabled  = false;
+        setStatus('active', '摄像头已开启，正在推理…');
+        panel.classList.add('visible');
+        startInference();
+      } catch (err) {
+        setStatus('error', `摄像头错误: ${err.message}`);
+      }
+    });
+
+    // ── Stop camera ──
+    btnStop.addEventListener('click', () => {
+      stopAll();
+      setStatus('', '已停止');
+      btnStart.disabled = false;
+      btnStop.disabled  = true;
+    });
+
+    function stopAll() {
+      clearInterval(intervalId);
+      intervalId = null;
+      if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+    }
+
+    function syncOverlay() {
+      overlay.width  = video.videoWidth  || video.clientWidth  || 640;
+      overlay.height = video.videoHeight || video.clientHeight || 480;
+    }
+
+    // ── Inference loop ──
+    function startInference() {
+      clearInterval(intervalId);
+      intervalId = setInterval(runInference, parseInt(intervalSel.value));
+      intervalSel.addEventListener('change', () => {
+        clearInterval(intervalId);
+        intervalId = setInterval(runInference, parseInt(intervalSel.value));
+      });
+    }
+
+    async function runInference() {
+      if (isBusy || !video.srcObject) return;
+      isBusy = true;
+
+      syncOverlay();
+      capCanvas.width  = video.videoWidth  || 640;
+      capCanvas.height = video.videoHeight || 480;
+      capCtx.drawImage(video, 0, 0);
+
+      capCanvas.toBlob(async (blob) => {
+        if (!blob) { isBusy = false; return; }
+        const fd = new FormData();
+        fd.append('image', blob, 'frame.jpg');
+
+        try {
+          const res = await fetch(`${API_BASE}/predict_realtime`, { method: 'POST', body: fd });
+          const data = await res.json();
+          if (data.success) {
+            currentFaces = data.faces || [];
+            renderOverlay(currentFaces);
+            renderPanel(currentFaces);
+          }
+        } catch (e) {
+          setStatus('error', `连接失败: ${e.message}`);
+        }
+        isBusy = false;
+      }, 'image/jpeg', 0.82);
+    }
+
+    // ── Draw bounding boxes ──
+    function renderOverlay(faces) {
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      if (!faces.length) return;
+
+      const scaleX = overlay.width  / (video.videoWidth  || 640);
+      const scaleY = overlay.height / (video.videoHeight || 480);
+
+      faces.forEach((face, i) => {
+        if (!face.bbox) return;
+        const [x1, y1, x2, y2] = face.bbox;
+        const rx = x1 * scaleX, ry = y1 * scaleY;
+        const rw = (x2 - x1) * scaleX, rh = (y2 - y1) * scaleY;
+        const color = BAR_COLORS[face.emotion] || '#a78bfa';
+
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = 2.5;
+        ctx.strokeRect(rx, ry, rw, rh);
+
+        // Label background
+        const label = `${EMOTION_ZH[face.emotion] || face.emotion}  ${(face.confidence * 100).toFixed(0)}%`;
+        ctx.font = 'bold 14px sans-serif';
+        const tw = ctx.measureText(label).width + 10;
+        ctx.fillStyle = color;
+        ctx.fillRect(rx, ry - 24, tw, 22);
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, rx + 5, ry - 7);
+
+        // Face index badge
+        if (faces.length > 1) {
+          ctx.fillStyle = '#1a1a24';
+          ctx.beginPath();
+          ctx.arc(rx + rw - 12, ry + 12, 12, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = color;
+          ctx.font = 'bold 12px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(i + 1, rx + rw - 12, ry + 17);
+          ctx.textAlign = 'left';
+        }
+      });
+    }
+
+    // ── Emotion panel ──
+    function renderPanel(faces) {
+      if (!faces.length) {
+        noFaceMsg.style.display = 'block';
+        faceTabs.innerHTML = '';
+        mainEmo.textContent  = '—';
+        mainConf.textContent = '未检测到人脸';
+        barsDiv.innerHTML = '';
+        return;
+      }
+      noFaceMsg.style.display = 'none';
+
+      // Tabs (only show when >1 face)
+      if (faces.length > 1) {
+        faceTabs.innerHTML = faces.map((_, i) =>
+          `<div class="face-tab${i === activeFaceIdx ? ' active' : ''}" data-i="${i}">人脸 ${i + 1}</div>`
+        ).join('');
+        faceTabs.querySelectorAll('.face-tab').forEach(el => {
+          el.addEventListener('click', () => {
+            activeFaceIdx = parseInt(el.dataset.i);
+            renderPanel(currentFaces);
+          });
+        });
+      } else {
+        faceTabs.innerHTML = '';
+        activeFaceIdx = 0;
+      }
+
+      if (activeFaceIdx >= faces.length) activeFaceIdx = 0;
+      const face = faces[activeFaceIdx];
+      const emoZh = EMOTION_ZH[face.emotion] || face.emotion;
+
+      mainEmo.textContent  = emoZh;
+      mainEmo.style.color  = BAR_COLORS[face.emotion] || '#a78bfa';
+      const yoloStr = face.yolo_conf != null ? `  ·  YOLO ${(face.yolo_conf * 100).toFixed(0)}%` : '';
+      mainConf.textContent = `置信度 ${(face.confidence * 100).toFixed(1)}%${yoloStr}`;
+
+      const probs = face.all_probs || {};
+      const sorted = Object.entries(probs).sort((a, b) => b[1] - a[1]);
+      barsDiv.innerHTML = sorted.map(([emo, pct]) => `
+        <div class="bar-row">
+          <div class="bar-label">${EMOTION_ZH[emo] || emo}</div>
+          <div class="bar-track">
+            <div class="bar-fill" style="width:${(pct * 100).toFixed(1)}%;background:${BAR_COLORS[emo] || '#7c3aed'}"></div>
+          </div>
+          <div class="bar-pct">${(pct * 100).toFixed(1)}%</div>
+        </div>`).join('');
+    }
+  </script>
+</body>
+</html>

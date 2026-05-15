@@ -1,0 +1,23 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local runtime outputs
+data/comprehensive_results/
+data/monitor_results/
+# IDE
+.vscode/
+.cursor/
+.venv/
+
+backend/data
+
+.env
+
+# Reports / LaTeX (do not publish to GitHub)
+paper/
+
+# Full project zip for local backup / transfer (large)
+Emotion_detection.zip
